@@ -1,9 +1,9 @@
 
-public class Counter {
+public class Accumulator {
 	private String hostName;
 	private String ip;
 	private String devName;
-	private Integer count;
+	private Integer accumulator;
 	
 	
 	public String getHostName() {
@@ -24,10 +24,11 @@ public class Counter {
 	public void setDevName(String devName) {
 		this.devName = devName;
 	}
-	public Integer getCount() {
-		return count;
+	public Integer getAccumulator() {
+		return accumulator;
 	}
-	public void setCount(Integer count) {
-		this.count = count;
+	public void setAccumulator(Integer accumulator) {
+		this.accumulator = accumulator;
 	}
+
 }

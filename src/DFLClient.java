@@ -14,6 +14,7 @@ import java.util.List;
 
 public class DFLClient {
 	public final static int JudgeCount = 30;// 几个样本组成一个直方图
+	public final static int JudgeWindows = 5;// 几个widows异常则判定为fault
 	public final static int Threshold = 9999999;// 阙值，训练得到
 	public final static int TotalCount = 2500;// 总数据条数，后期这个会去掉
 	public final static String DataPath = "C:/Users/Administrator/Desktop/log/";// 数据集文件夹目录
@@ -24,16 +25,41 @@ public class DFLClient {
 		// TODO Auto-generated method stub
 		List<DevInfo> dataSet = new ArrayList<DevInfo>();
 		dataSet = readDataSet();// 获取到所有文件的数据：List--devInfo
-		int count = 0;// 第几次拉数据，用来模拟每个T内收集数据
+		// int count = 0;// 第几次拉数据，用来模拟每个T内收集数据
 
-		List<DevInfo> allDevInfoList = new ArrayList<DevInfo>();
-		allDevInfoList = pullData(dataSet, count);
-		List<List<Histogram>> allDevAllHistList = calHistogram(allDevInfoList);// 现在只是迭代一台机器上的所有dev，只是allList里面的一个list
-		printHistogramSet(allDevAllHistList);
+		List<Accumulator> devAccumulatorList = getDevList(dataSet);
+		
+		
+		
+		
+		
+		for (int i = 0; i < TotalCount / JudgeCount; i++) {
+			// **********once start**********
+			List<DevInfo> allDevInfoList = new ArrayList<DevInfo>();
+			allDevInfoList = pullData(dataSet, i);
+			List<List<Histogram>> allDevAllHistList = calHistogram(allDevInfoList);
+			// printHistogramSet(allDevAllHistList);
+			List<Integer> abnormalWin = anomalyDetection(allDevAllHistList);
+		}
+
+		// **********once end**********
 
 	}
+	public static List<Accumulator> getDevList(List<DevInfo> dataSet){
+		List<Accumulator> devAccumulatorList = new ArrayList<Accumulator>();
+		Accumulator accumulator = new Accumulator();
+		for(int i=0;i<dataSet.size();i++){
+			accumulator.setDevName(dataSet.get(i).getDevName());
+			accumulator.setHostName(dataSet.get(i).getHostName());
+			accumulator.setIp(dataSet.get(i).getIp());
+			accumulator.setAccumulator(0);
+			devAccumulatorList.add(accumulator);
+		}
+		return devAccumulatorList;
+	}
 
-	public static List<DevInfo> pullData(List<DevInfo> dataSet, int count) {
+	public static List<DevInfo> pullData(List<DevInfo> dataSet,
+			int count) {
 		List<DevInfo> allDevInfoList = new ArrayList<DevInfo>();
 		DevInfo dev = new DevInfo();
 		for (int i = 0; i < dataSet.size(); i++) {// 迭代所有dev
@@ -193,7 +219,7 @@ public class DFLClient {
 	public static Histogram createHistogram(List<Double> oneIndicatorList,
 			int bins, double binSize, HashMap<String, Object> devInfoMap) {
 
-		Histogram histogram = new Histogram(bins+1);//加1是避免临界，例bins硬set为30，binSize除出来的，最大的值会导致越界
+		Histogram histogram = new Histogram(bins + 1);// 加1是避免临界，例bins硬set为30，binSize除出来的，最大的值会导致越界
 		for (int i = 0; i < oneIndicatorList.size(); i++) {
 			histogram.getHistInfo()[(int) (oneIndicatorList.get(i) / binSize)]++;
 		}
