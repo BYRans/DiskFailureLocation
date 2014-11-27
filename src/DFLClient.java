@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 
 public class DFLClient {
-	public final static int JudegCount = 30;// 几个样本组成一个直方图
+	public final static int JudgeCount = 30;// 几个样本组成一个直方图
 	public final static int Threshold = 9999999;// 阙值，训练得到
 	public final static int TotalCount = 2500;// 总数据条数，后期这个会去掉
 	public final static String DataPath = "C:/Users/Administrator/Desktop/log/";// 数据集文件夹目录
@@ -28,7 +28,8 @@ public class DFLClient {
 
 		List<DevInfo> allDevInfoList = new ArrayList<DevInfo>();
 		allDevInfoList = pullData(dataSet, count);
-		calFDR(allDevInfoList);// 现在只是迭代一台机器上的所有dev，只是allList里面的一个list
+		List<List<Histogram>> allDevAllHistList = calHistogram(allDevInfoList);// 现在只是迭代一台机器上的所有dev，只是allList里面的一个list
+		printHistogramSet(allDevAllHistList);
 
 	}
 
@@ -40,95 +41,167 @@ public class DFLClient {
 			dev.setHostName(dataSet.get(i).getHostName());
 			dev.setDevName(dataSet.get(i).getDevName());
 			dev.setIp(dataSet.get(i).getIp());
-			for (int j = 0; j < JudegCount; j++) {// 迭代某个dev里各个指标的各条记录，取JudegCount条
+			for (int j = 0; j < JudgeCount; j++) {// 迭代某个dev里各个指标的各条记录，取JudgeCount条
 				dev.getTps().add(
-						dataSet.get(i).getTps().get(count * JudegCount + j));// histCount*JudegCount+j是每次读下JudegCount条数据
+						dataSet.get(i).getTps().get(count * JudgeCount + j));// histCount*JudgeCount+j是每次读下JudgeCount条数据
 				dev.getRdSec().add(
-						dataSet.get(i).getRdSec().get(count * JudegCount + j));
+						dataSet.get(i).getRdSec().get(count * JudgeCount + j));
 				dev.getWrSec().add(
-						dataSet.get(i).getWrSec().get(count * JudegCount + j));
+						dataSet.get(i).getWrSec().get(count * JudgeCount + j));
 				dev.getAvgrqSz()
 						.add(dataSet.get(i).getAvgrqSz()
-								.get(count * JudegCount + j));
+								.get(count * JudgeCount + j));
 				dev.getAvgquSz()
 						.add(dataSet.get(i).getAvgquSz()
-								.get(count * JudegCount + j));
+								.get(count * JudgeCount + j));
 				dev.getAwait().add(
-						dataSet.get(i).getAwait().get(count * JudegCount + j));
+						dataSet.get(i).getAwait().get(count * JudgeCount + j));
 				dev.getSvctm().add(
-						dataSet.get(i).getSvctm().get(count * JudegCount + j));
+						dataSet.get(i).getSvctm().get(count * JudgeCount + j));
 				dev.getUtil().add(
-						dataSet.get(i).getUtil().get(count * JudegCount + j));
-			}// 现在上面各个list里有某个dev的JudegCount条记录，后期利用Indicator数组简化。
+						dataSet.get(i).getUtil().get(count * JudgeCount + j));
+			}// 现在上面各个list里有某个dev的JudgeCount条记录，后期利用Indicator数组简化。
 			allDevInfoList.add(dev);
 		}
 		return allDevInfoList;
 	}
 
-	public static void calFDR(List<DevInfo> devInfoList) {
+	public static List<List<Histogram>> calHistogram(List<DevInfo> devInfoList) {
 		int bins = 0;
 		double binSize = 0.0;
-		double globalMax = 0.0;
-		double globalMin = 0.0;
-		DevInfo dev = null;
+
+		List<Double> tpsList = new ArrayList<Double>();
+		List<Double> rdSecList = new ArrayList<Double>();
+		List<Double> wrSecList = new ArrayList<Double>();
+		List<Double> avgrqSzList = new ArrayList<Double>();
+		List<Double> avgquSzList = new ArrayList<Double>();
+		List<Double> awaitList = new ArrayList<Double>();
+		List<Double> svctmList = new ArrayList<Double>();
+		List<Double> utilList = new ArrayList<Double>();
 
 		for (int i = 0; i < devInfoList.size(); i++) {// 迭代该台机器上的每个dev
-			globalMax = getGlobalMax();
-			globalMin = getGlobalMin();
-			HashMap<String, Object> map = new HashMap<String, Object>();
-			map.put("hostName", dev.getHostName());
-			map.put("ip", dev.getIp());
-			map.put("devName", dev.getDevName());
-			map.put("globalMax", globalMax);
-			map.put("globalMin", globalMax);
+			for (int j = 0; j < JudgeCount; j++) {// 每个dev上下列指标汇总
+				tpsList.add(devInfoList.get(i).getTps().get(j));
+				rdSecList.add(devInfoList.get(i).getRdSec().get(j));
+				wrSecList.add(devInfoList.get(i).getWrSec().get(j));
+				avgrqSzList.add(devInfoList.get(i).getAvgrqSz().get(j));
+				avgquSzList.add(devInfoList.get(i).getAvgquSz().get(j));
+				awaitList.add(devInfoList.get(i).getAwait().get(j));
+				svctmList.add(devInfoList.get(i).getSvctm().get(j));
+				utilList.add(devInfoList.get(i).getUtil().get(j));
+			}
+		}
+
+		HashMap<String, HashMap<String, Object>> allFDRMap = new HashMap<String, HashMap<String, Object>>();
+
+		// 这一段想个好方式改一下，反射？？
+		Double[] globalMinMax = getGlobalMinMax(tpsList);
+		HashMap<String, Object> FDRMap = freedmanDiaconisRule(tpsList,
+				globalMinMax[1], globalMinMax[0]);// tps指标全局的bins binSize
+		allFDRMap.put("tps", FDRMap);
+
+		globalMinMax = getGlobalMinMax(rdSecList);
+		FDRMap = freedmanDiaconisRule(rdSecList, globalMinMax[1],
+				globalMinMax[0]);
+		allFDRMap.put("rdSec", FDRMap);
+
+		globalMinMax = getGlobalMinMax(wrSecList);
+		FDRMap = freedmanDiaconisRule(wrSecList, globalMinMax[1],
+				globalMinMax[0]);
+		allFDRMap.put("wrSec", FDRMap);
+
+		globalMinMax = getGlobalMinMax(avgrqSzList);
+		FDRMap = freedmanDiaconisRule(avgrqSzList, globalMinMax[1],
+				globalMinMax[0]);
+		allFDRMap.put("avgrqSz", FDRMap);
+
+		globalMinMax = getGlobalMinMax(avgquSzList);
+		FDRMap = freedmanDiaconisRule(avgquSzList, globalMinMax[1],
+				globalMinMax[0]);
+		allFDRMap.put("avgquSz", FDRMap);
+
+		globalMinMax = getGlobalMinMax(awaitList);
+		FDRMap = freedmanDiaconisRule(awaitList, globalMinMax[1],
+				globalMinMax[0]);
+		allFDRMap.put("await", FDRMap);
+
+		globalMinMax = getGlobalMinMax(svctmList);
+		FDRMap = freedmanDiaconisRule(svctmList, globalMinMax[1],
+				globalMinMax[0]);
+		allFDRMap.put("svctm", FDRMap);
+
+		globalMinMax = getGlobalMinMax(utilList);
+		FDRMap = freedmanDiaconisRule(utilList, globalMinMax[1],
+				globalMinMax[0]);
+		allFDRMap.put("util", FDRMap);
+
+		List<List<Histogram>> allDevAllHistList = new ArrayList<List<Histogram>>();// 所有dev的所有指标的list
+																					// dev-indicator-histogram
+		for (int k = 0; k < devInfoList.size(); k++) {// 迭代该台机器上的每个dev
+			HashMap<String, Object> devInfoMap = new HashMap<String, Object>();
+			devInfoMap.put("hostName", devInfoList.get(k).getHostName());
+			devInfoMap.put("ip", devInfoList.get(k).getIp());
+			devInfoMap.put("devName", devInfoList.get(k).getDevName());
 
 			HashMap<String, List<Double>> indiDataListMap = new HashMap<String, List<Double>>();
-			indiDataListMap.put("tps", devInfoList.get(i).getTps());
-			indiDataListMap.put("rdSec", devInfoList.get(i).getRdSec());
-			indiDataListMap.put("wrSec", devInfoList.get(i).getWrSec());
-			indiDataListMap.put("avgrqSz", devInfoList.get(i).getAvgrqSz());
-			indiDataListMap.put("avgquSz", devInfoList.get(i).getAvgquSz());
-			indiDataListMap.put("await", devInfoList.get(i).getAwait());
-			indiDataListMap.put("svctm", devInfoList.get(i).getSvctm());
-			indiDataListMap.put("util", devInfoList.get(i).getUtil());
+			indiDataListMap.put("tps", devInfoList.get(k).getTps());
+			indiDataListMap.put("rdSec", devInfoList.get(k).getRdSec());
+			indiDataListMap.put("wrSec", devInfoList.get(k).getWrSec());
+			indiDataListMap.put("avgrqSz", devInfoList.get(k).getAvgrqSz());
+			indiDataListMap.put("avgquSz", devInfoList.get(k).getAvgquSz());
+			indiDataListMap.put("await", devInfoList.get(k).getAwait());
+			indiDataListMap.put("svctm", devInfoList.get(k).getSvctm());
+			indiDataListMap.put("util", devInfoList.get(k).getUtil());
 
-			List<List<Histogram>> devAllHistogramList = new ArrayList<List<Histogram>>();
 			List<Histogram> devHistogramList = new ArrayList<Histogram>();
 			for (int l = 0; l < Indicator.length; l++) {
-				map.put("indicator", Indicator[l]);
+				FDRMap = allFDRMap.get(Indicator[l]);
+				devInfoMap.put("indicator", Indicator[l]);
 				List<Double> oneIndiDataList = indiDataListMap
 						.get(Indicator[l]);
-				Histogram histogram = createHistogram(oneIndiDataList, map);// 一个指标的一个直方图（包含JudegCount条记录）
+				Histogram histogram = createHistogram(oneIndiDataList,
+						(int) FDRMap.get("bins"),
+						(double) FDRMap.get("binSize"), devInfoMap);// 一个指标的一个直方图（包含JudgeCount条记录）
 				devHistogramList.add(histogram);
 			}// devHistogramList包含某个dev所有指标的直方图（一个直方图）
 
-			devAllHistogramList.add(devHistogramList);//所有dev的各个指标的直方图
-			return;
+			allDevAllHistList.add(devHistogramList);// 所有dev的各个指标的直方图
 		}
+
+		return allDevAllHistList;
+	}
+
+	public static Double[] getGlobalMinMax(List<Double> dataList) {
+		Double[] globalMinMax = new Double[2];
+		if (dataList == null || dataList.size() == 0)
+			return globalMinMax;
+
+		Double min = dataList.get(0);
+		Double max = dataList.get(0);
+		for (int i = 1; i < dataList.size(); i++) {
+			if (dataList.get(i) > max)
+				max = dataList.get(i);
+			else if (dataList.get(i) < min)
+				min = dataList.get(i);
+		}
+
+		globalMinMax[0] = min;
+		globalMinMax[1] = max;
+		return globalMinMax;
 	}
 
 	public static Histogram createHistogram(List<Double> oneIndicatorList,
-			HashMap<String, Object> map) {
+			int bins, double binSize, HashMap<String, Object> devInfoMap) {
 
-		double globalMax = (double) map.get("globalMax");
-		double globalMin = (double) map.get("globalMin");
-
-		int bins = 0;
-		double binSize = 0.0;
-		HashMap<String, Object> FDRMap = freedmanDiaconisRule(oneIndicatorList,
-				globalMax, globalMin);
-		bins = (int) FDRMap.get("bins");
-		binSize = (double) FDRMap.get("binSize");
-		Histogram histogram = new Histogram(bins);
-		System.out.println(oneIndicatorList.size());
+		Histogram histogram = new Histogram(bins+1);//加1是避免临界，例bins硬set为30，binSize除出来的，最大的值会导致越界
 		for (int i = 0; i < oneIndicatorList.size(); i++) {
 			histogram.getHistInfo()[(int) (oneIndicatorList.get(i) / binSize)]++;
 		}
 
-		histogram.setHostName((String) map.get("hostName"));
-		histogram.setIp((String) map.get("ip"));
-		histogram.setDevName((String) map.get("devName"));
-		histogram.setIndicator((String) map.get("indicator"));
+		histogram.setHostName((String) devInfoMap.get("hostName"));
+		histogram.setIp((String) devInfoMap.get("ip"));
+		histogram.setDevName((String) devInfoMap.get("devName"));
+		histogram.setIndicator((String) devInfoMap.get("indicator"));
 
 		return histogram;
 
@@ -251,11 +324,22 @@ public class DFLClient {
 			double IQR = interQuartileRange(values);
 			binSize = (2 * IQR * Math.pow(values.size(), -1 / 3));
 			bins = (int) Math.ceil((globalMax - globalMin) / binSize);
+
+			if (binSize == 0.0) {
+				System.out.println("binSize == 0.0");
+				bins = JudgeCount;
+				binSize = (globalMax - globalMin) / bins;
+			}
+
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+
 		map.put("bins", bins);
 		map.put("binSize", binSize);
+
+		System.out.println("(" + globalMax + " -" + globalMin + ") / "
+				+ binSize + "=" + bins);
 		return map;
 	}
 
@@ -326,6 +410,30 @@ public class DFLClient {
 			}
 			System.out.println();
 			System.out.println();
+		}
+
+	}
+
+	// 打印直方图
+	public static void printHistogramSet(List<List<Histogram>> dataSet) {
+		System.out.println("*******Histogram Structure***********");
+		System.out.println("List size:" + dataSet.size());
+		System.out.println("indicator number:" + dataSet.get(0).size());
+		for (int i = 0; i < dataSet.size(); i++) {
+			System.out.print("dev--Histogram:");
+			for (int k = 0; k < 1; k++) {
+				System.out.println("devHostName:"
+						+ dataSet.get(i).get(k).getHostName());
+				System.out.println("devName:"
+						+ dataSet.get(i).get(k).getDevName());
+				System.out.println("Histogram indicator → :"
+						+ dataSet.get(i).get(k).getIndicator());
+				for (int l = 0; l < dataSet.get(i).get(k).getHistInfo().length; l++)
+					System.out.print(","
+							+ dataSet.get(i).get(k).getHistInfo()[l]);
+				System.out.println();
+				System.out.println();
+			}
 		}
 
 	}
