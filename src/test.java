@@ -6,7 +6,7 @@ public class test {
 		// TODO Auto-generated method stub
 		int i = 1;
 		Integer o = 2;
-		System.out.println((int)(i/o));
+		System.out.println(o==2);
 		
 	}
 }
