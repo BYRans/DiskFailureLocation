@@ -7,6 +7,9 @@ public class Accumulator {
 	public void addAccumulator() {
 		this.accumulator++;
 	}
+	public void minusAccumulator() {
+		this.accumulator--;
+	}
 
 	public String getHostName() {
 		return hostName;

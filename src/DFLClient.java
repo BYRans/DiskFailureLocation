@@ -15,7 +15,7 @@ import java.util.List;
 public class DFLClient {
 	public final static int JudgeCount = 30;// 几个样本组成一个直方图
 	public final static int JudgeWindows = 5;// 几个widows异常则判定为fault
-	public final static int Threshold = 9999999;// 阙值，训练得到,每个指标一个阙值，现在暂用一个
+	public final static int Threshold = 2147483647;// 阙值，训练得到,每个指标一个阙值，现在暂用一个
 	public final static int TotalCount = 2500;// 总数据条数，后期这个会去掉
 	public final static String DataPath = "C:/Users/Administrator/Desktop/log/";// 数据集文件夹目录
 	public final static String[] Indicator = new String[] { "tps", "rdSec",// 监测的指标数组,暂时没用到，初步设想是利用反射机制，这样就不用在get、set时罗列指标了
@@ -31,14 +31,13 @@ public class DFLClient {
 		List<Anomaly> anomalyList = initAnomaly(dataSet);
 		int winCount = 0;
 		for (int i = 0; i < TotalCount / JudgeCount; i++) {
-			// **********once start**********
 			List<DevInfo> allDevInfoList = new ArrayList<DevInfo>();
 			allDevInfoList = pullData(dataSet, winCount++);
 			List<List<Histogram>> allDevAllHistList = calHistogram(allDevInfoList);
 			// printHistogramSet(allDevAllHistList);
 			anomalyDetection(allDevAllHistList, accumulatorList, anomalyList);
-			// **********once end**********
 		}
+		printAccumulator(accumulatorList);
 
 	}
 
@@ -58,15 +57,13 @@ public class DFLClient {
 				histogram = allDevAllHistList.get(i).get(j);
 				Integer threshold = getThreshold(histogram.getIndicator());
 				for (int k = 0; k < allDevAllHistList.size(); k++) {// 某个dev的某个指标的直方图跟其它的所有点去比较
-					// Integer distance = calDistance(allDevAllHistList.get(k)
-					// .get(j), histogram);
-					Integer distance = 10;
+					Integer distance = calDistance(allDevAllHistList.get(k)
+							.get(j), histogram);
 
 					if (distance > threshold) {// 如果大于阙值
 						anomaly.addVote();// 大于阙值的设备数加1
 					}
 				}
-
 				if (anomaly.getVote() >= (Math.floor(anomalyList.size() / 2)) + 1) { // 如果vote超过设备数一半。此处可优化，不必全部比完，待优化！！！！
 					anomaly.addAnomalyCount();// 该设备异常的窗口数加1
 					// flag = false;
@@ -83,16 +80,39 @@ public class DFLClient {
 				anomaly.setVote(0);
 				anomaly.setWindowCount(0);
 				continue;
-			} else {
-
-				if (anomaly.getAnomalyCount() == 0)
-					anomaly.setWindowCount(0);
-				if (JudgeWindows - anomaly.getWindowCount()
-						+ anomaly.getAnomalyCount() < (Math
-						.floor(JudgeWindows / 2)) + 1)
-					anomaly.setWindowCount(0);
 			}
+
+			if (anomaly.getWindowCount() - anomaly.getAnomalyCount() >= (Math
+					.floor(JudgeWindows / 2)) + 1) {// 如果正常窗口数超过JudgeWindows的一半
+				accumulator = getDevAccumulator(accumulatorList,
+						histogram.getHostName(), histogram.getIp(),
+						histogram.getDevName());
+				if (accumulator.getAccumulator() > 0)
+					accumulator.minusAccumulator();// failure计数器减1
+				anomaly.setAnomalyCount(0);
+				anomaly.setVote(0);
+				anomaly.setWindowCount(0);
+				continue;
+			}
+			// else {
+			//
+			// if (anomaly.getAnomalyCount() == 0)
+			// anomaly.setWindowCount(0);
+			// if (JudgeWindows - anomaly.getWindowCount()
+			// + anomaly.getAnomalyCount() < (Math
+			// .floor(JudgeWindows / 2)) + 1)
+			// anomaly.setWindowCount(0);
+			// }
 		}
+	}
+
+	// 两个直方图距离
+	public static Integer calDistance(Histogram fHist, Histogram sHist) {
+		Integer distance = 0;
+		for (int i = 0; i < fHist.getHistInfo().length; i++)
+			distance += Math.abs(fHist.getHistInfo()[i]
+					- sHist.getHistInfo()[i]);
+		return distance;
 	}
 
 	public static Anomaly getDevAnomaly(List<Anomaly> AnomalyList,
@@ -129,13 +149,14 @@ public class DFLClient {
 
 	public static List<Anomaly> initAnomaly(List<DevInfo> dataSet) {
 		List<Anomaly> devAnomalyList = new ArrayList<Anomaly>();
-		Anomaly anomaly = new Anomaly();
 		for (int i = 0; i < dataSet.size(); i++) {
+			Anomaly anomaly = new Anomaly();
 			anomaly.setDevName(dataSet.get(i).getDevName());
 			anomaly.setHostName(dataSet.get(i).getHostName());
 			anomaly.setIp(dataSet.get(i).getIp());
 			anomaly.setAnomalyCount(0);
 			anomaly.setWindowCount(0);
+			anomaly.setVote(0);
 			devAnomalyList.add(anomaly);
 		}
 		return devAnomalyList;
@@ -143,8 +164,8 @@ public class DFLClient {
 
 	public static List<Accumulator> initAccumulator(List<DevInfo> dataSet) {
 		List<Accumulator> devAccumulatorList = new ArrayList<Accumulator>();
-		Accumulator accumulator = new Accumulator();
 		for (int i = 0; i < dataSet.size(); i++) {
+			Accumulator accumulator = new Accumulator();
 			accumulator.setDevName(dataSet.get(i).getDevName());
 			accumulator.setHostName(dataSet.get(i).getHostName());
 			accumulator.setIp(dataSet.get(i).getIp());
@@ -435,8 +456,7 @@ public class DFLClient {
 		return dev;
 	}
 
-	
-	//Freedman–Diaconis rule
+	// Freedman–Diaconis rule
 	public static HashMap<String, Object> freedmanDiaconisRule(
 			List<Double> values, double globalMax, double globalMin) {// 注意，当JudgeCount条数据全为0.00时，bins、binSize为0、0.0
 		Integer bins = 0;
@@ -449,7 +469,7 @@ public class DFLClient {
 			bins = (int) Math.ceil((globalMax - globalMin) / binSize);
 
 			if (binSize == 0.0) {
-				System.out.println("binSize == 0.0");
+				// System.out.println("binSize == 0.0");
 				bins = JudgeCount;
 				binSize = (globalMax - globalMin) / bins;
 			}
@@ -461,12 +481,12 @@ public class DFLClient {
 		map.put("bins", bins);
 		map.put("binSize", binSize);
 
-		System.out.println("(" + globalMax + " -" + globalMin + ") / "
-				+ binSize + "=" + bins);
+		// System.out.println("(" + globalMax + " -" + globalMin + ") / "
+		// + binSize + "=" + bins);
 		return map;
 	}
 
-	//IQR
+	// IQR
 	public static double interQuartileRange(List<Double> values)
 			throws Exception {
 		double[] quartiles = quartiles(values);
@@ -558,6 +578,17 @@ public class DFLClient {
 				System.out.println();
 				System.out.println();
 			}
+		}
+
+	}
+
+	public static void printAccumulator(List<Accumulator> accumulatorList) {
+		System.out.println("*******hostName-devName:accumulator*************");
+		for (int i = 0; i < accumulatorList.size(); i++) {
+			Accumulator accumulator = accumulatorList.get(i);
+			System.out.println(accumulator.getHostName() + "-"
+					+ accumulator.getDevName() + ":"
+					+ accumulator.getAccumulator());
 		}
 
 	}
