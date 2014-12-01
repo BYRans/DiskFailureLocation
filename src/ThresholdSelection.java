@@ -1,18 +1,17 @@
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileNotFoundException;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Properties;
 
-public class DFLClient {
+public class ThresholdSelection {
+
 	public final static int JudgeCount = 30;// 几个样本组成一个直方图
 	public final static int JudgeWindows = 5;// 几个widows异常则判定为fault
 	public final static int TotalCount = 2500;// 总数据条数，后期这个会去掉
@@ -21,65 +20,48 @@ public class DFLClient {
 			"wrSec", "avgrqSz", "avgquSz", "await", "svctm", "util" };
 	public static HashMap<String, Integer> THMap = new HashMap<String, Integer>();
 	static {
-		try {
-			readThresholdConfigFile("src/Threshold");// 读阙值配置，放到THMap中
-		} catch (NumberFormatException | IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+		initTHMap();// 初始化阙值map
 	}
 
-	public static void main(String[] args) throws FileNotFoundException {
+	public static void main(String[] args) throws IOException {
 		// TODO Auto-generated method stub
+
 		List<DevInfo> dataSet = new ArrayList<DevInfo>();
 		dataSet = readDataSet();// 获取到所有文件的数据：List--devInfo
-		// int count = 0;// 第几次拉数据，用来模拟每个T内收集数据
-
-		List<Accumulator> accumulatorList = initAccumulator(dataSet);// 构建累加器
-		List<Anomaly> anomalyList = initAnomaly(dataSet);
 		int winCount = 0;
 		for (int i = 0; i < TotalCount / JudgeCount; i++) {
 			List<DevInfo> allDevInfoList = new ArrayList<DevInfo>();
 			allDevInfoList = pullData(dataSet, winCount++);
 			List<List<Histogram>> allDevAllHistList = calHistogram(allDevInfoList);
-			// printHistogramSet(allDevAllHistList);
-			anomalyDetection(allDevAllHistList, accumulatorList, anomalyList);
+			calThreshold(allDevAllHistList);
 		}
 
 		for (int i = 0; i < Indicator.length; i++) {
-			System.out.println(THMap.get(Indicator[i]));
+			changeConfigFile("src/Threshold", Indicator[i],
+					THMap.get(Indicator[i]).toString());
 		}
 
-		printAccumulator(accumulatorList);
-
+		System.out.println("Threshold generate success.");
 	}
 
-	public static void readThresholdConfigFile(String path)
-			throws NumberFormatException, IOException {
-		BufferedReader in = new BufferedReader(new FileReader(path));
-		String line = "";
-		while ((line = in.readLine()) != null) {
-			if (line.contains("=")) {
-				String parts[] = line.split("=");
-				THMap.put(parts[0], Integer.valueOf(parts[1]));
-			}
+	public static void changeConfigFile(String filename, String key,
+			String value) throws IOException {
+		Properties prop = new Properties();
+		prop.load(new FileInputStream(filename));
+		prop.setProperty(key, value);
+		prop.store(new FileOutputStream(filename), null);
+	}
+
+	public static void initTHMap() {
+		for (int i = 0; i < Indicator.length; i++) {
+			THMap.put(Indicator[i], 0);
 		}
-		in.close();
 	}
 
-	public static void anomalyDetection(
-			List<List<Histogram>> allDevAllHistList,
-			List<Accumulator> accumulatorList, List<Anomaly> anomalyList) {
+	public static void calThreshold(List<List<Histogram>> allDevAllHistList) {
 		Histogram histogram = null;
-		Accumulator accumulator = null;
-		Anomaly anomaly = null;
-
 		for (int i = 0; i < allDevAllHistList.size(); i++) {// 迭代所有dev
-			anomaly = getDevAnomaly(anomalyList, allDevAllHistList.get(i)
-					.get(0).getHostName(), allDevAllHistList.get(i).get(0)
-					.getIp(), allDevAllHistList.get(i).get(0).getDevName());
 			for (int j = 0; j < allDevAllHistList.get(i).size(); j++) {// 迭代一个dev的所有指标
-				// boolean flag = true;// 所有的指标有一个判定出异常，则剩下的不继续判定了。待优化！！
 				histogram = allDevAllHistList.get(i).get(j);
 				Integer threshold = getThreshold(histogram.getIndicator());
 				for (int k = 0; k < allDevAllHistList.size(); k++) {// 某个dev的某个指标的直方图跟其它的所有点去比较
@@ -87,48 +69,11 @@ public class DFLClient {
 							.get(j), histogram);
 
 					if (distance > threshold) {// 如果大于阙值
-						anomaly.addVote();// 大于阙值的设备数加1
+						THMap.put(histogram.getIndicator(), distance);// 更新THMap里对应值指标的阙值
 					}
 				}
-				if (anomaly.getVote() >= (Math.floor(anomalyList.size() / 2)) + 1) { // 如果vote超过设备数一半。此处可优化，不必全部比完，待优化！！！！
-					anomaly.addAnomalyCount();// 该设备异常的窗口数加1
-					// flag = false;
-					break;
-				}
 			}// 迭代一个dev所有指标判定循环结束
-			anomaly.addWindowCount();
-			if (anomaly.getAnomalyCount() >= (Math.floor(JudgeWindows / 2)) + 1) {// 如果异常窗口数超过JudgeWindows的一半
-				accumulator = getDevAccumulator(accumulatorList,
-						histogram.getHostName(), histogram.getIp(),
-						histogram.getDevName());
-				accumulator.addAccumulator();// failure计数器加1
-				anomaly.setAnomalyCount(0);
-				anomaly.setVote(0);
-				anomaly.setWindowCount(0);
-				continue;
-			}
 
-			if (anomaly.getWindowCount() - anomaly.getAnomalyCount() >= (Math
-					.floor(JudgeWindows / 2)) + 1) {// 如果正常窗口数超过JudgeWindows的一半
-				accumulator = getDevAccumulator(accumulatorList,
-						histogram.getHostName(), histogram.getIp(),
-						histogram.getDevName());
-				if (accumulator.getAccumulator() > 0)
-					accumulator.minusAccumulator();// failure计数器减1
-				anomaly.setAnomalyCount(0);
-				anomaly.setVote(0);
-				anomaly.setWindowCount(0);
-				continue;
-			}
-			// else {
-			//
-			// if (anomaly.getAnomalyCount() == 0)
-			// anomaly.setWindowCount(0);
-			// if (JudgeWindows - anomaly.getWindowCount()
-			// + anomaly.getAnomalyCount() < (Math
-			// .floor(JudgeWindows / 2)) + 1)
-			// anomaly.setWindowCount(0);
-			// }
 		}
 	}
 
@@ -141,53 +86,11 @@ public class DFLClient {
 		return distance;
 	}
 
-	public static Anomaly getDevAnomaly(List<Anomaly> AnomalyList,
-			String hostName, String ip, String devName) {
-		Anomaly anomaly = null;
-		for (Anomaly iterator : AnomalyList) {
-			if (iterator.getHostName().equals(hostName)
-					&& iterator.getIp().equals(ip)
-					&& iterator.getDevName().equals(devName))
-				anomaly = iterator;
-		}
-
-		return anomaly;
-	}
-
-	public static Accumulator getDevAccumulator(
-			List<Accumulator> accumulatorList, String hostName, String ip,
-			String devName) {
-		Accumulator accumulator = null;
-		for (Accumulator iterator : accumulatorList) {
-			if (iterator.getHostName().equals(hostName)
-					&& iterator.getIp().equals(ip)
-					&& iterator.getDevName().equals(devName))
-				accumulator = iterator;
-		}
-
-		return accumulator;
-
-	}
-
 	public static Integer getThreshold(String indicator) {
 		Integer threshold = THMap.get(indicator);
-		return threshold;// 每个指标有不同的阙值，现在暂时用一个。待修改！！
+		return threshold;
 	}
 
-	public static List<Anomaly> initAnomaly(List<DevInfo> dataSet) {
-		List<Anomaly> devAnomalyList = new ArrayList<Anomaly>();
-		for (int i = 0; i < dataSet.size(); i++) {
-			Anomaly anomaly = new Anomaly();
-			anomaly.setDevName(dataSet.get(i).getDevName());
-			anomaly.setHostName(dataSet.get(i).getHostName());
-			anomaly.setIp(dataSet.get(i).getIp());
-			anomaly.setAnomalyCount(0);
-			anomaly.setWindowCount(0);
-			anomaly.setVote(0);
-			devAnomalyList.add(anomaly);
-		}
-		return devAnomalyList;
-	}
 
 	public static List<Accumulator> initAccumulator(List<DevInfo> dataSet) {
 		List<Accumulator> devAccumulatorList = new ArrayList<Accumulator>();
@@ -565,66 +468,6 @@ public class DFLClient {
 
 			return (lower + upper) / 2.0;
 		}
-	}
-
-	// 打印数据集
-	public static void printDataSet(List<DevInfo> dataSet) {
-		System.out.println("dataSet structure");
-		System.out.println("dataSet size:" + dataSet.size());
-		for (int i = 0; i < 10; i++) {
-			System.out.println("hostName:" + dataSet.get(i).getHostName());
-			System.out.println("hevName:" + dataSet.get(i).getDevName());
-			System.out.println("ip:" + dataSet.get(i).getIp());
-			System.out.print("devInfo--tps:");
-			for (int k = 0; k < 30; k++) {
-				System.out.print("," + dataSet.get(i).getTps().get(k));
-			}
-			System.out.println();
-			System.out.println();
-		}
-
-	}
-
-	// 打印直方图
-	public static void printHistogramSet(List<List<Histogram>> dataSet) {
-		System.out.println("*******Histogram Structure***********");
-		System.out.println("List size:" + dataSet.size());
-		System.out.println("indicator number:" + dataSet.get(0).size());
-		for (int i = 0; i < dataSet.size(); i++) {
-			System.out.print("dev--Histogram:");
-			for (int k = 0; k < 1; k++) {
-				System.out.println("devHostName:"
-						+ dataSet.get(i).get(k).getHostName());
-				System.out.println("devName:"
-						+ dataSet.get(i).get(k).getDevName());
-				System.out.println("Histogram indicator → :"
-						+ dataSet.get(i).get(k).getIndicator());
-				for (int l = 0; l < dataSet.get(i).get(k).getHistInfo().length; l++)
-					System.out.print(","
-							+ dataSet.get(i).get(k).getHistInfo()[l]);
-				System.out.println();
-				System.out.println();
-			}
-		}
-
-	}
-
-	public static void printAccumulator(List<Accumulator> accumulatorList) {
-		System.out.println("*******hostName-devName:accumulator*************");
-
-		// sortAccumulatorList(accumulatorList);//根据累加器数值进行排序，排名靠前的设备即为异常点
-
-		for (int i = 0; i < accumulatorList.size(); i++) {
-			Accumulator accumulator = accumulatorList.get(i);
-			System.out.println(accumulator.getHostName() + "-"
-					+ accumulator.getDevName() + ":"
-					+ accumulator.getAccumulator());
-		}
-
-	}
-
-	public static void sortAccumulatorList(List<Accumulator> accumulatorList) {
-
 	}
 
 }
