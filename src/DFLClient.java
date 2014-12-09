@@ -46,10 +46,6 @@ public class DFLClient {
 			anomalyDetection(allDevAllHistList, accumulatorList, anomalyList);
 		}
 
-		for (int i = 0; i < Indicator.length; i++) {
-			System.out.println(THMap.get(Indicator[i]));
-		}
-
 		printAccumulator(accumulatorList);
 
 	}
@@ -92,6 +88,7 @@ public class DFLClient {
 				}
 				if (anomaly.getVote() >= (Math.floor(anomalyList.size() / 2)) + 1) { // 如果vote超过设备数一半。此处可优化，不必全部比完，待优化！！！！
 					anomaly.addAnomalyCount();// 该设备异常的窗口数加1
+					anomaly.setVote(0);
 					// flag = false;
 					break;
 				}
@@ -211,24 +208,15 @@ public class DFLClient {
 			dev.setDevName(dataSet.get(i).getDevName());
 			dev.setIp(dataSet.get(i).getIp());
 			for (int j = 0; j < JudgeCount; j++) {// 迭代某个dev里各个指标的各条记录，取JudgeCount条
-				dev.getTps().add(
-						dataSet.get(i).getTps().get(count * JudgeCount + j));// histCount*JudgeCount+j是每次读下JudgeCount条数据
-				dev.getRdSec().add(
-						dataSet.get(i).getRdSec().get(count * JudgeCount + j));
-				dev.getWrSec().add(
-						dataSet.get(i).getWrSec().get(count * JudgeCount + j));
-				dev.getAvgrqSz()
-						.add(dataSet.get(i).getAvgrqSz()
-								.get(count * JudgeCount + j));
-				dev.getAvgquSz()
-						.add(dataSet.get(i).getAvgquSz()
-								.get(count * JudgeCount + j));
-				dev.getAwait().add(
-						dataSet.get(i).getAwait().get(count * JudgeCount + j));
-				dev.getSvctm().add(
-						dataSet.get(i).getSvctm().get(count * JudgeCount + j));
-				dev.getUtil().add(
-						dataSet.get(i).getUtil().get(count * JudgeCount + j));
+				int record = count * JudgeCount + j;// histCount*JudgeCount+j是每次读下JudgeCount条数据
+				dev.getTps().add(dataSet.get(i).getTps().get(record));
+				dev.getRdSec().add(dataSet.get(i).getRdSec().get(record));
+				dev.getWrSec().add(dataSet.get(i).getWrSec().get(record));
+				dev.getAvgrqSz().add(dataSet.get(i).getAvgrqSz().get(record));
+				dev.getAvgquSz().add(dataSet.get(i).getAvgquSz().get(record));
+				dev.getAwait().add(dataSet.get(i).getAwait().get(record));
+				dev.getSvctm().add(dataSet.get(i).getSvctm().get(record));
+				dev.getUtil().add(dataSet.get(i).getUtil().get(record));
 			}// 现在上面各个list里有某个dev的JudgeCount条记录，后期利用Indicator数组简化。
 			allDevInfoList.add(dev);
 		}
@@ -444,6 +432,12 @@ public class DFLClient {
 				dev.setHostName(hnIp[0]);
 				dev.setIp(hnIp[1]);
 				dev.setDevName(tempLineArray[index - 9]);
+
+				if (Double.valueOf(tempLineArray[index - 8]) == 0) {
+					tempLineArray[index - 8] = String
+							.valueOf(Math.random() * 1000);
+				}
+
 				dev.getTps().add(Double.valueOf(tempLineArray[index - 8]));// 倒着拿是因为时间那一列有时是两列，多出AM
 				// PM列。此处待优化
 				dev.getRdSec().add(Double.valueOf(tempLineArray[index - 7]));
