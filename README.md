@@ -12,8 +12,8 @@ sysstat是一个软件包，包含监测系统性能及效率的一组工具，�
 tps：每秒I/O请求数
 rd_sec：每秒读取字节数
 wr_sec：每秒写字节数
-avgrq-sz： Average size (in sectors) of the LUN’s I/O requests.
-avgqu-sz：读写请求队列平均长度。
+avgrq-sz： Average size (in sectors) of the LUN’s I/O requests
+avgqu-sz：读写请求队列平均长度
 await：请求平均等待时间（包含队列等待时间和处理时间）
 svctm：请求处理时间（不包含等待时间）
 %util：CPU利用率
