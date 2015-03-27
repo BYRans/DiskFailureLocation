@@ -3,11 +3,11 @@ diagnosis disk failure in large-scale cluster systems
 
 本系统参考论文：《Making Problem Diagnosis Work for Large-Scale,Production Storage Systems》
 
-一、	解决问题
+##一、	解决问题
 
   大规模分布式存储系统，性能问题都是不可避免的，难以解决。该方案目的在于诊断故障节点以及性能过低的点。
 
-二、	数据采集
+##二、	数据采集
 
   sysstat是一个软件包，包含监测系统性能及效率的一组工具，这些工具对于我们收集系统性能数据，比如CPU使用率、硬盘和网络吞吐数据，这些数据的收集和分析，有利于我们判断系统是否正常运行，是提高系统运行效率、安全运行服务器的得力助手。使用sysstat收集如下数据：
 
@@ -28,7 +28,7 @@ svctm：请求处理时间（不包含等待时间）
 %util：CPU利用率
 
 
-三、	主要思路
+##三、	主要思路
  
 1.	对每一项性能指标依次进行诊断。任一项指标异常，就判定该点异常。
 
